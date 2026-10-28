@@ -57,18 +57,19 @@
     font-size: calc(var(--h) * .82); font-weight: 800; color: #F3F1EC; font-variant-numeric: tabular-nums;
     border-radius: var(--r); box-shadow: 0 calc(var(--H) * .05) calc(var(--H) * .1) rgba(0,0,0,.55); }
   .flip.small { --h: calc(var(--H) * .42); --w: calc(var(--H) * .28); --r: calc(var(--H) * .04); }
-  .flip .half { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; backface-visibility: hidden; }
+  .flip .half { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; }
   .flip .half span { display: block; height: var(--h); line-height: var(--h); text-align: center; }
   .flip .top, .flip .ft { top: 0; border-radius: var(--r) var(--r) 0 0; transform-origin: 50% 100%;
     background: linear-gradient(#2A313B, #222830); border-bottom: .25vmin solid #0A0D11; }
   .flip .bot, .flip .fb { bottom: 0; border-radius: 0 0 var(--r) var(--r); transform-origin: 50% 0;
     background: linear-gradient(#1D232B, #191E25); }
   .flip .bot span, .flip .fb span { transform: translateY(-50%); }
-  .flip .ft, .flip .fb { z-index: 2; visibility: hidden; }
+  .flip .ft, .flip .fb { z-index: 2; visibility: hidden; will-change: transform; }
   .flip.go .ft { visibility: visible; animation: flipTop .28s ease-in forwards; }
   .flip.go .fb { visibility: visible; animation: flipBot .28s .28s ease-out both; }
-  @keyframes flipTop { from { transform: rotateX(0); } to { transform: rotateX(-90deg); } }
-  @keyframes flipBot { from { transform: rotateX(90deg); } to { transform: rotateX(0); } }
+  /* Плоское «складывание» вместо 3D-поворота: Android WebView рисует его без пропадающих кусков */
+  @keyframes flipTop { from { transform: scaleY(1); filter: brightness(1); } to { transform: scaleY(0); filter: brightness(.6); } }
+  @keyframes flipBot { from { transform: scaleY(0); filter: brightness(.6); } to { transform: scaleY(1); filter: brightness(1); } }
   /* «петли» по бокам разреза */
   .flip::before, .flip::after { content: ''; position: absolute; top: 50%; width: calc(var(--H) * .024); height: calc(var(--h) * .09);
     margin-top: calc(var(--h) * -.045); background: #0A0D11; border-radius: .3vmin; z-index: 3; }
@@ -346,7 +347,7 @@
 
 <script>
 // ---- Настройки ----
-const PAGE_VERSION = '2.6';           // версия экрана (меняется при каждом обновлении страницы)
+const PAGE_VERSION = '2.7';           // версия экрана (меняется при каждом обновлении страницы)
 const LAT = 29.5577, LON = 34.9519;   // Эйлат
 const TZ = 'Asia/Jerusalem';
 const NIGHT_FROM = 23, NIGHT_TO = 6;  // ночью экран приглушается
@@ -389,16 +390,18 @@ function makeFlip(parent, small) {
     '<div class="half ft"><span></span></div><div class="half fb"><span></span></div>';
   parent.appendChild(el);
   const [top, bot, ft, fb] = el.querySelectorAll('span');
-  let cur = null;
-  el.querySelector('.fb').addEventListener('animationend', () => { bot.textContent = cur; el.classList.remove('go'); });
+  let cur = null, settleTimer = null;
+  const settle = () => { clearTimeout(settleTimer); bot.textContent = cur; el.classList.remove('go'); };
+  el.querySelector('.fb').addEventListener('animationend', settle);
   return v => {
     if (v === cur) return;
     const old = cur == null ? v : cur;
     cur = v;
     top.textContent = v; fb.textContent = v;
     bot.textContent = old; ft.textContent = old;
-    if (old === v || document.hidden) { bot.textContent = v; return; }
+    if (old === v || document.hidden) { settle(); return; }
     el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+    clearTimeout(settleTimer); settleTimer = setTimeout(settle, 700);   // страховка, если animationend потерялся
   };
 }
 const flips = {
