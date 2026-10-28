@@ -326,7 +326,7 @@
       <button class="e-btn" id="dreamBtn">Открыть</button>
     </div>
     <div class="set-row">
-      <div class="nm">Версия <span id="verApp"></span> · экран <span id="verPage"></span><small>Экран обновляется сам из интернета раз в 30 минут.</small></div>
+      <div class="nm">Версия <span id="verApp"></span> · экран <span id="verPage"></span> · на сервере <span id="verRemote">…</span><small id="updStatus">Экран обновляется сам из интернета раз в 30 минут.</small></div>
       <button class="e-btn" id="updBtn">Проверить</button>
     </div>
   </div>
@@ -344,7 +344,7 @@
 
 <script>
 // ---- Настройки ----
-const PAGE_VERSION = '2.8';           // версия экрана (меняется при каждом обновлении страницы)
+const PAGE_VERSION = '2.9';           // версия экрана (меняется при каждом обновлении страницы)
 const LAT = 29.5577, LON = 34.9519;   // Эйлат
 const TZ = 'Asia/Jerusalem';
 const NIGHT_FROM = 23, NIGHT_TO = 6;  // ночью звуки молчат
@@ -518,8 +518,21 @@ $('dreamBtn').onclick = () => { try { Android.openDreamSettings(); } catch (e) {
 $('updBtn').onclick = () => {
   try { Android.checkUpdate(); } catch (e) {}
   $('updBtn').textContent = 'Проверяю…';
+  $('updStatus').textContent = 'Проверяю…';
   setTimeout(() => { $('updBtn').textContent = 'Проверить'; }, 6000);
+  loadRemoteVersion();
 };
+// приложение (APK 2.9+) сообщает, чем закончилась проверка
+window.onUpdateStatus = msg => { $('updStatus').textContent = msg; };
+// какая версия экрана сейчас на сервере
+async function loadRemoteVersion() {
+  try {
+    const r = await fetch('https://raw.githubusercontent.com/markello07/screen-clock/main/index.html?t=' + Date.now());
+    const m = /PAGE_VERSION = '([\d.]+)'/.exec(await r.text());
+    $('verRemote').textContent = m ? m[1] : '?';
+  } catch (e) { $('verRemote').textContent = 'нет связи'; }
+}
+$('eCals').addEventListener('click', loadRemoteVersion);
 $('verPage').textContent = PAGE_VERSION;
 
 // В режиме заставки: долгое нажатие на часы — выйти
