@@ -67,7 +67,18 @@
     font-family: "Noto Sans Hebrew", Roboto, "Segoe UI", sans-serif; }
   .date-he b { font-weight: 600; color: var(--accent); }
   .date-he .heb { color: var(--muted); }
-  .week { margin-top: 1vmin; font-size: 3vmin; color: var(--muted); }
+  .week { font-size: 3vmin; color: var(--muted); }
+  .week-row { margin-top: 1vmin; display: flex; justify-content: space-between; align-items: center; gap: 2vmin; }
+  /* Заряд батареи */
+  .batt { --c: #6CC08B; display: flex; align-items: center; font-size: 3vmin; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .batt[hidden] { display: none; }
+  .batt.mid { --c: var(--accent); }
+  .batt.low { --c: #E5806B; }
+  .b-body { position: relative; width: 5.4vmin; height: 2.7vmin; border: .3vmin solid var(--muted); border-radius: .6vmin; padding: .3vmin; }
+  .b-fill { display: block; height: 100%; width: 0; background: var(--c); border-radius: .25vmin; transition: width .6s; }
+  .b-tip { width: .5vmin; height: 1.2vmin; background: var(--muted); border-radius: 0 .3vmin .3vmin 0; margin-right: 1.2vmin; }
+  .b-pct { color: var(--text); }
+  .batt.charging .b-pct::after { content: ' ⚡'; color: var(--accent); }
 
   /* Погода */
   .weather { display: grid; grid-template-columns: auto 1fr; gap: 1vmin 3vmin; align-items: center; }
@@ -196,7 +207,13 @@
     <div class="datebox">
       <div class="date" id="date"></div>
       <div class="date-he" id="dateHe" dir="rtl"></div>
-      <div class="week" id="week"></div>
+      <div class="week-row">
+        <div class="week" id="week"></div>
+        <div class="batt" id="batt" hidden>
+          <span class="b-body"><span class="b-fill" id="battFill"></span></span><span class="b-tip"></span>
+          <span class="b-pct" id="battPct"></span>
+        </div>
+      </div>
     </div>
     <div class="panel" id="wPanel">
       <div class="w-place">Эйлат <span>подробнее ›</span></div>
@@ -263,7 +280,7 @@
 
 <script>
 // ---- Настройки ----
-const PAGE_VERSION = '2.1';           // версия экрана (меняется при каждом обновлении страницы)
+const PAGE_VERSION = '2.2';           // версия экрана (меняется при каждом обновлении страницы)
 const LAT = 29.5577, LON = 34.9519;   // Эйлат
 const TZ = 'Asia/Jerusalem';
 const NIGHT_FROM = 23, NIGHT_TO = 6;  // ночью экран приглушается
@@ -725,6 +742,35 @@ async function loadWeather() {
     else $('weather').innerHTML = '<div class="w-meta">Нет связи — погода появится, когда будет интернет</div>';
   }
 }
+
+// ---- Заряд батареи ----
+function showBattery(level, charging) {        // level 0..1
+  if (level == null || isNaN(level)) return;
+  const pct = Math.round(level * 100), b = $('batt');
+  b.hidden = false;
+  b.classList.toggle('low', pct < 20);
+  b.classList.toggle('mid', pct >= 20 && pct <= 50);
+  b.classList.toggle('charging', !!charging);
+  $('battFill').style.width = pct + '%';
+  $('battPct').textContent = pct + '%';
+}
+async function initBattery() {
+  try {                                         // будущие версии APK отдают заряд напрямую
+    if (window.Android && Android.battery) {
+      const upd = () => { try { const s = JSON.parse(Android.battery()); showBattery(s.level, s.charging); } catch (e) {} };
+      upd(); setInterval(upd, 60 * 1000); return;
+    }
+  } catch (e) {}
+  try {                                         // встроенный в браузер Battery API
+    if (!navigator.getBattery) return;
+    const bat = await navigator.getBattery();
+    const upd = () => showBattery(bat.level, bat.charging);
+    upd();
+    bat.addEventListener('levelchange', upd);
+    bat.addEventListener('chargingchange', upd);
+  } catch (e) {}
+}
+initBattery();
 
 tick();
 setInterval(tick, 1000);
