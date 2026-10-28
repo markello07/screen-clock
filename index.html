@@ -206,6 +206,8 @@
   .e-loc { font-size: 2vmin; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .e-item.now .e-time { color: var(--accent); font-weight: 500; }
   .e-item.past { opacity: .4; }
+  .e-item[data-id] { border-radius: .8vmin; transition: background .15s; }
+  .e-item[data-id]:active { background: rgba(255, 255, 255, .07); }
   .e-empty { color: var(--muted); font-size: 2.5vmin; padding: 2vmin 0; line-height: 1.4; }
   .e-btn { margin-top: 1.4vmin; background: var(--accent); color: #111; border: none; border-radius: 1.4vmin;
     padding: 1.4vmin 2.4vmin; font-size: 2.5vmin; font-weight: 500; }
@@ -326,7 +328,7 @@
 
 <script>
 // ---- Настройки ----
-const PAGE_VERSION = '2.4';           // версия экрана (меняется при каждом обновлении страницы)
+const PAGE_VERSION = '2.5';           // версия экрана (меняется при каждом обновлении страницы)
 const LAT = 29.5577, LON = 34.9519;   // Эйлат
 const TZ = 'Asia/Jerusalem';
 const NIGHT_FROM = 23, NIGHT_TO = 6;  // ночью экран приглушается
@@ -640,10 +642,17 @@ function eventRow(e, k, now) {
     if (e.begin <= +now && e.end > +now) { cls += ' now'; time = 'сейчас · до ' + hm(e.end); }
     else if (e.end <= +now) cls += ' past';
   }
-  return '<div class="' + cls + '"><span class="e-bar" style="background:' + esc(e.color || '#8B949E') + '"></span>' +
+  const link = e.id != null ? ' data-id="' + e.id + '" data-b="' + e.begin + '" data-e="' + e.end + '"' : '';
+  return '<div class="' + cls + '"' + link + '><span class="e-bar" style="background:' + esc(e.color || '#8B949E') + '"></span>' +
     '<span class="e-time">' + time + '</span><div class="e-body"><div class="e-name">' + esc(e.title || '(без названия)') + '</div>' +
     (e.loc ? '<div class="e-loc">' + esc(e.loc) + '</div>' : '') + '</div></div>';
 }
+
+// Нажатие на событие — открыть его в календаре планшета (нужен APK 2.5+)
+$('eList').addEventListener('click', ev => {
+  const it = ev.target.closest('.e-item[data-id]'); if (!it) return;
+  try { if (window.Android && Android.openEvent) Android.openEvent(+it.dataset.id, +it.dataset.b, +it.dataset.e); } catch (e) {}
+});
 
 // ---- Календарь ----
 function renderCal() {
