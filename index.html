@@ -20,8 +20,6 @@
     font-family: Roboto, "Segoe UI", system-ui, sans-serif; overflow: hidden;
     -webkit-tap-highlight-color: transparent; user-select: none; }
   body { background: transparent; }       /* иначе фон body перекрывает слой неба */
-  body { transition: opacity 1.5s; }
-  body.night { opacity: .55; }
 
   .app { height: 100%; display: grid; grid-template-columns: 64fr 36fr; gap: 2.2vmin; padding: 3vmin;
     padding-left: max(3vmin, env(safe-area-inset-left)); padding-right: max(3vmin, env(safe-area-inset-right)); }
@@ -77,7 +75,6 @@
   .colon { display: flex; flex-direction: column; justify-content: center; gap: calc(var(--H) * .16); height: var(--H); padding: 0 calc(var(--H) * .024); }
   .colon i { width: calc(var(--H) * .096); height: calc(var(--H) * .096); border-radius: 50%; background: var(--accent); }
   .secs .flip { color: var(--muted); }
-  body.night .secs { visibility: hidden; }
 
   .date { margin-top: 0; font-size: 6.4vmin; font-weight: 300; }
   .date b { font-weight: 500; color: var(--accent); }
@@ -347,10 +344,10 @@
 
 <script>
 // ---- Настройки ----
-const PAGE_VERSION = '2.7';           // версия экрана (меняется при каждом обновлении страницы)
+const PAGE_VERSION = '2.8';           // версия экрана (меняется при каждом обновлении страницы)
 const LAT = 29.5577, LON = 34.9519;   // Эйлат
 const TZ = 'Asia/Jerusalem';
-const NIGHT_FROM = 23, NIGHT_TO = 6;  // ночью экран приглушается
+const NIGHT_FROM = 23, NIGHT_TO = 6;  // ночью звуки молчат
 const WEEK_STARTS_MONDAY = true;
 const WEEKEND = [5, 6];               // пятница и суббота (0 = вс)
 const EVENT_DAYS = 7;                 // на сколько дней вперёд показывать события
@@ -448,9 +445,9 @@ function tick() {
   const h = d.getHours();
   const night = NIGHT_FROM > NIGHT_TO ? (h >= NIGHT_FROM || h < NIGHT_TO) : (h >= NIGHT_FROM && h < NIGHT_TO);
   if (night !== nightState) {
+    // ночью только тишина звуков; экран не затемняем (по просьбе Марка)
+    if (nightState === null) { try { if (window.Android) Android.setBrightness(-1); } catch (e) {} }   // сбросить яркость от старых версий
     nightState = night;
-    document.body.classList.toggle('night', night);
-    try { if (window.Android) Android.setBrightness(night ? 0.02 : -1); } catch (e) {}
   }
 }
 
