@@ -1,0 +1,732 @@
+<!doctype html>
+<!-- screenclock-page -->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Экран-часы</title>
+<style>
+  :root {
+    --bg: #0E1116;
+    --panel: #161B22;
+    --line: #232A33;
+    --text: #E8EAED;
+    --muted: #8B949E;
+    --accent: #F2B84B;
+    --weekend: #E5806B;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text);
+    font-family: Roboto, "Segoe UI", system-ui, sans-serif; overflow: hidden;
+    -webkit-tap-highlight-color: transparent; user-select: none; }
+  body { transition: opacity 1.5s; }
+  body.night { opacity: .55; }
+
+  .app { height: 100%; display: grid; grid-template-columns: 64fr 36fr; gap: 2.2vmin; padding: 3vmin; }
+  .left { display: flex; flex-direction: column; justify-content: space-between; min-height: 0; min-width: 0; }
+  .right { display: flex; flex-direction: column; gap: 2.2vmin; min-height: 0; min-width: 0; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 2.4vmin; padding: 2.4vmin; }
+
+  /* Часы */
+  /* Перекидные часы (split-flap) */
+  .clock { display: flex; align-items: flex-end; gap: 1.2vmin; margin-top: 1vmin; }
+  .pair { display: flex; gap: 1vmin; }
+  .flip { --w: 16.5vmin; --h: 25vmin; --r: 1.8vmin;
+    position: relative; width: var(--w); height: var(--h); perspective: 80vmin;
+    font-size: calc(var(--h) * .82); font-weight: 800; color: #F3F1EC; font-variant-numeric: tabular-nums;
+    border-radius: var(--r); box-shadow: 0 1.2vmin 2.4vmin rgba(0,0,0,.55); }
+  .flip.small { --w: 7vmin; --h: 10.5vmin; --r: 1vmin; }
+  .flip .half { position: absolute; left: 0; right: 0; height: 50%; overflow: hidden; backface-visibility: hidden; }
+  .flip .half span { display: block; height: var(--h); line-height: var(--h); text-align: center; }
+  .flip .top, .flip .ft { top: 0; border-radius: var(--r) var(--r) 0 0; transform-origin: 50% 100%;
+    background: linear-gradient(#2A313B, #222830); border-bottom: .25vmin solid #0A0D11; }
+  .flip .bot, .flip .fb { bottom: 0; border-radius: 0 0 var(--r) var(--r); transform-origin: 50% 0;
+    background: linear-gradient(#1D232B, #191E25); }
+  .flip .bot span, .flip .fb span { transform: translateY(-50%); }
+  .flip .ft, .flip .fb { z-index: 2; visibility: hidden; }
+  .flip.go .ft { visibility: visible; animation: flipTop .28s ease-in forwards; }
+  .flip.go .fb { visibility: visible; animation: flipBot .28s .28s ease-out both; }
+  @keyframes flipTop { from { transform: rotateX(0); } to { transform: rotateX(-90deg); } }
+  @keyframes flipBot { from { transform: rotateX(90deg); } to { transform: rotateX(0); } }
+  /* «петли» по бокам разреза */
+  .flip::before, .flip::after { content: ''; position: absolute; top: 50%; width: .6vmin; height: 2.2vmin;
+    margin-top: -1.1vmin; background: #0A0D11; border-radius: .3vmin; z-index: 3; }
+  .flip::before { left: -.2vmin; } .flip::after { right: -.2vmin; }
+  .colon { display: flex; flex-direction: column; justify-content: center; gap: 4vmin; height: 25vmin; padding: 0 .6vmin; }
+  .colon i { width: 2.4vmin; height: 2.4vmin; border-radius: 50%; background: var(--accent); }
+  .secs { margin-left: .8vmin; }
+  .secs .flip { color: var(--muted); }
+  body.night .secs { visibility: hidden; }
+
+  .date { margin-top: 3vmin; font-size: 6.4vmin; font-weight: 300; }
+  .date b { font-weight: 500; color: var(--accent); }
+  .date-he { text-align: left; margin-top: .8vmin; font-size: 4.4vmin; font-weight: 400; color: var(--text); opacity: .9;
+    font-family: "Noto Sans Hebrew", Roboto, "Segoe UI", sans-serif; }
+  .date-he b { font-weight: 600; color: var(--accent); }
+  .date-he .heb { color: var(--muted); }
+  .week { margin-top: 1vmin; font-size: 3vmin; color: var(--muted); }
+
+  /* Погода */
+  .weather { display: grid; grid-template-columns: auto 1fr; gap: 1vmin 3vmin; align-items: center; }
+  .w-now { display: flex; align-items: center; gap: 2vmin; grid-row: span 2; }
+  .w-icon { font-size: 9vmin; line-height: 1; }
+  .w-temp { font-size: 9vmin; font-weight: 300; font-variant-numeric: tabular-nums; }
+  .w-desc { font-size: 3vmin; }
+  .w-meta { font-size: 2.4vmin; color: var(--muted); }
+  .forecast { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5vmin;
+    margin-top: 1.6vmin; padding-top: 1.6vmin; border-top: 1px solid var(--line); }
+  .fc { display: flex; align-items: center; gap: 1.2vmin; font-size: 2.6vmin; }
+  .fc .d { color: var(--muted); width: 4.5vmin; }
+  .fc .i { font-size: 3.6vmin; }
+  .fc .t { font-variant-numeric: tabular-nums; }
+  .fc .t span { color: var(--muted); }
+  .w-place { font-size: 2.2vmin; color: var(--muted); text-transform: uppercase; letter-spacing: .12em; margin-bottom: 1vmin;
+    display: flex; justify-content: space-between; }
+  .w-place span { text-transform: none; letter-spacing: 0; }
+  #wPanel { cursor: pointer; }
+  #wPanel:active { border-color: var(--accent); }
+
+  /* Развёрнутая погода */
+  .overlay { position: fixed; inset: 0; background: rgba(5, 7, 10, .82); display: none; align-items: center;
+    justify-content: center; z-index: 10; padding: 3vmin; }
+  .overlay.open { display: flex; }
+  .wx { width: 100%; max-width: 150vmin; max-height: 100%; overflow-y: auto; }
+  .wx, .hours { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .wx::-webkit-scrollbar, .hours::-webkit-scrollbar { width: .6vmin; height: .6vmin; }
+  .wx::-webkit-scrollbar-thumb, .hours::-webkit-scrollbar-thumb { background: var(--line); border-radius: .3vmin; }
+  .wx-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2vmin; }
+  .wx-title { font-size: 3.4vmin; font-weight: 500; }
+  .wx-close { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 1.2vmin;
+    padding: 1vmin 2.4vmin; font-size: 2.4vmin; }
+  .wx-sub { font-size: 2.2vmin; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin: 2.4vmin 0 1.2vmin; }
+  .hours { display: flex; gap: 1vmin; overflow-x: auto; padding-bottom: 1vmin; }
+  .hr { flex: none; width: 9vmin; text-align: center; padding: 1.2vmin 0; border-radius: 1.4vmin; background: var(--bg); }
+  .hr .t { font-size: 2vmin; color: var(--muted); }
+  .hr .i { font-size: 4vmin; margin: .6vmin 0; }
+  .hr .v { font-size: 2.6vmin; font-variant-numeric: tabular-nums; }
+  .hr .p { font-size: 1.8vmin; color: #6FA8DC; min-height: 2.2vmin; }
+  .days7 { display: grid; gap: .4vmin; }
+  .d7 { display: grid; grid-template-columns: 22vmin 6vmin 1fr 14vmin 16vmin 12vmin; align-items: center; gap: 2vmin;
+    font-size: 2.6vmin; padding: 1.1vmin 1.4vmin; border-radius: 1.2vmin; background: var(--bg); font-variant-numeric: tabular-nums; }
+  .d7 .i { font-size: 3.6vmin; }
+  .d7 .m { color: var(--muted); font-size: 2.2vmin; }
+  .d7 .rng span { color: var(--muted); }
+
+  /* Календарь */
+  .cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1vmin; }
+  .cal-title { font-size: 2.8vmin; font-weight: 500; text-transform: capitalize; white-space: nowrap; }
+  .cal-nav { display: flex; gap: 1vmin; }
+  .cal-nav button { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 1.2vmin;
+    width: 4.6vmin; height: 4.6vmin; font-size: 2.6vmin; }
+  .grid { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; gap: .2vmin; }
+  .grid .h { font-size: 1.9vmin; color: var(--muted); padding-bottom: .4vmin; }
+  .grid .c { position: relative; font-size: 2.3vmin; padding: .7vmin 0 .9vmin; border-radius: 1vmin; font-variant-numeric: tabular-nums; }
+  .grid .c.we { color: var(--weekend); }
+  .grid .c.out { opacity: .25; }
+  .grid .c.today { background: var(--accent); color: #111; font-weight: 700; }
+  .grid .c.ev::after { content: ''; position: absolute; left: 50%; bottom: .25vmin; width: .7vmin; height: .7vmin;
+    margin-left: -.35vmin; border-radius: 50%; background: var(--accent); }
+  .grid .c.today.ev::after { background: #111; }
+  .grid .c:not(.h):active { background: var(--line); }
+  .grid .c.sel { box-shadow: inset 0 0 0 2px var(--accent); }
+  .cal-nav button.today-btn { width: auto; padding: 0 1.6vmin; font-size: 2vmin; }
+
+  /* События */
+  .events { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .e-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: .6vmin; }
+  .e-title { font-size: 2.8vmin; font-weight: 500; }
+  .e-sub { font-size: 2vmin; color: var(--muted); }
+  .e-list { flex: 1; overflow-y: auto; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .e-list::-webkit-scrollbar { width: .6vmin; }
+  .e-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: .3vmin; }
+  .e-tools { display: flex; align-items: center; gap: 1vmin; }
+  .e-icon { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 1.2vmin;
+    width: 4.6vmin; height: 4.6vmin; font-size: 2.6vmin; line-height: 1; }
+  .e-icon.spin { color: var(--accent); animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .cals { max-width: 90vmin; }
+  .acc { font-size: 2.1vmin; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 2vmin 0 .6vmin; }
+  .cal-row { display: flex; align-items: center; gap: 1.8vmin; padding: 1.3vmin 1.4vmin; border-radius: 1.2vmin;
+    background: var(--bg); margin-bottom: .6vmin; font-size: 2.7vmin; }
+  .cal-row .dot { flex: none; width: 2.2vmin; height: 2.2vmin; border-radius: 50%; }
+  .cal-row .nm { flex: 1; min-width: 0; }
+  .cal-row .nm small { display: block; font-size: 1.9vmin; color: var(--muted); }
+  .cal-row .box { flex: none; width: 4vmin; height: 4vmin; border-radius: 1vmin; border: 2px solid var(--muted);
+    display: grid; place-items: center; font-size: 2.6vmin; color: #111; }
+  .cal-row.on .box { background: var(--accent); border-color: var(--accent); }
+  .cal-row.off .nm { color: var(--muted); }
+  .set-row { display: flex; align-items: center; gap: 2vmin; padding: 1.4vmin; border-radius: 1.2vmin;
+    background: var(--bg); margin-bottom: .6vmin; font-size: 2.6vmin; }
+  .set-row .nm { flex: 1; min-width: 0; }
+  .set-row .nm small { display: block; font-size: 1.9vmin; color: var(--muted); margin-top: .4vmin; line-height: 1.35; }
+  .set-row .e-btn { margin-top: 0; flex: none; }
+  .e-back { background: none; border: 1px solid var(--line); color: var(--accent); border-radius: 1.2vmin;
+    padding: .6vmin 1.6vmin; font-size: 2vmin; }
+  .e-day { font-size: 2vmin; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 1.6vmin 0 .4vmin; }
+  .e-day.today { color: var(--accent); }
+  .e-day:first-child { margin-top: .4vmin; }
+  .e-item { display: flex; gap: 1.4vmin; padding: .9vmin 0; border-bottom: 1px solid var(--line); }
+  .e-bar { flex: none; width: .6vmin; border-radius: .3vmin; }
+  .e-time { flex: none; width: 13vmin; font-size: 2.3vmin; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: .2vmin; }
+  .e-body { flex: 1; min-width: 0; }
+  .e-name { font-size: 2.6vmin; line-height: 1.25; word-break: break-word; }
+  .e-loc { font-size: 2vmin; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .e-item.now .e-time { color: var(--accent); font-weight: 500; }
+  .e-item.past { opacity: .4; }
+  .e-empty { color: var(--muted); font-size: 2.5vmin; padding: 2vmin 0; line-height: 1.4; }
+  .e-btn { margin-top: 1.4vmin; background: var(--accent); color: #111; border: none; border-radius: 1.4vmin;
+    padding: 1.4vmin 2.4vmin; font-size: 2.5vmin; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="app">
+  <section class="left">
+    <div>
+      <div class="clock" id="clock">
+        <div class="pair" id="hh"></div>
+        <div class="colon"><i></i><i></i></div>
+        <div class="pair" id="mm"></div>
+        <div class="pair secs" id="ss"></div>
+      </div>
+      <div class="date" id="date"></div>
+      <div class="date-he" id="dateHe" dir="rtl"></div>
+      <div class="week" id="week"></div>
+    </div>
+    <div class="panel" id="wPanel">
+      <div class="w-place">Эйлат <span>подробнее ›</span></div>
+      <div class="weather" id="weather"><div class="w-meta">Загружаю погоду…</div></div>
+    </div>
+  </section>
+
+  <section class="right">
+    <div class="panel">
+      <div class="cal-head">
+        <div class="cal-title" id="calTitle"></div>
+        <div class="cal-nav">
+          <button id="calToday" class="today-btn" hidden>сегодня</button>
+          <button id="calPrev" aria-label="Предыдущий месяц">‹</button>
+          <button id="calNext" aria-label="Следующий месяц">›</button>
+        </div>
+      </div>
+      <div class="grid" id="cal"></div>
+    </div>
+
+    <div class="panel events">
+      <div class="e-head">
+        <div class="e-title">События</div>
+        <div class="e-tools">
+          <span class="e-sub" id="eSub"></span>
+          <button class="e-icon" id="eSync" aria-label="Обновить">↻</button>
+          <button class="e-icon" id="eCals" aria-label="Выбрать календари">☰</button>
+        </div>
+      </div>
+      <div class="e-list" id="eList"></div>
+    </div>
+  </section>
+</div>
+
+<div class="overlay" id="calOverlay">
+  <div class="panel wx cals">
+    <div class="wx-head">
+      <div class="wx-title">Настройки</div>
+      <button class="wx-close" id="calClose">Готово</button>
+    </div>
+    <div class="wx-sub">Какие календари показывать</div>
+    <div id="calBody"></div>
+    <div class="wx-sub">Автозапуск</div>
+    <div class="set-row">
+      <div class="nm">Часы на зарядке<small>Включаются сами, когда планшет заряжается и им не пользуются. В настройках выберите «Заставка» → «Экран-часы».</small></div>
+      <button class="e-btn" id="dreamBtn">Открыть</button>
+    </div>
+    <div class="set-row">
+      <div class="nm">Версия <span id="verApp"></span> · экран <span id="verPage"></span><small>Экран обновляется сам из интернета раз в 30 минут.</small></div>
+      <button class="e-btn" id="updBtn">Проверить</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="wxOverlay">
+  <div class="panel wx">
+    <div class="wx-head">
+      <div class="wx-title">Погода в Эйлате</div>
+      <button class="wx-close" id="wxClose">Закрыть</button>
+    </div>
+    <div id="wxBody"></div>
+  </div>
+</div>
+
+<script>
+// ---- Настройки ----
+const PAGE_VERSION = '2.0';           // версия экрана (меняется при каждом обновлении страницы)
+const LAT = 29.5577, LON = 34.9519;   // Эйлат
+const TZ = 'Asia/Jerusalem';
+const NIGHT_FROM = 23, NIGHT_TO = 6;  // ночью экран приглушается
+const WEEK_STARTS_MONDAY = true;
+const WEEKEND = [5, 6];               // пятница и суббота (0 = вс)
+const EVENT_DAYS = 7;                 // на сколько дней вперёд показывать события
+
+// ---- Хранилище: в приложении — SharedPreferences, в браузере — localStorage ----
+const store = {
+  get(k) { try { return window.Android ? Android.get(k) : localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { window.Android ? Android.set(k, v) : localStorage.setItem(k, v); } catch (e) {} }
+};
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, '0');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const DAYS = ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
+const DAYS_SHORT = ['вс','пн','вт','ср','чт','пт','сб'];
+const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+const MONTHS = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+const dayKey = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const hm = ms => { const d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+
+// ---- Часы ----
+let lastDay = -1, nightState = null;
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t - y0) / 864e5 + 1) / 7);
+}
+// Перекидная карточка: верх — новая цифра, низ — старая, пока «лепесток» не упадёт
+function makeFlip(parent, small) {
+  const el = document.createElement('div');
+  el.className = 'flip' + (small ? ' small' : '');
+  el.innerHTML = '<div class="half top"><span></span></div><div class="half bot"><span></span></div>' +
+    '<div class="half ft"><span></span></div><div class="half fb"><span></span></div>';
+  parent.appendChild(el);
+  const [top, bot, ft, fb] = el.querySelectorAll('span');
+  let cur = null;
+  el.querySelector('.fb').addEventListener('animationend', () => { bot.textContent = cur; el.classList.remove('go'); });
+  return v => {
+    if (v === cur) return;
+    const old = cur == null ? v : cur;
+    cur = v;
+    top.textContent = v; fb.textContent = v;
+    bot.textContent = old; ft.textContent = old;
+    if (old === v || document.hidden) { bot.textContent = v; return; }
+    el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+  };
+}
+const flips = {
+  h1: makeFlip($('hh')), h2: makeFlip($('hh')),
+  m1: makeFlip($('mm')), m2: makeFlip($('mm')),
+  s1: makeFlip($('ss'), true), s2: makeFlip($('ss'), true)
+};
+
+// ---- Иврит: день недели, дата и еврейская дата буквами ----
+const HE_DAYS = ['יום ראשון','יום שני','יום שלישי','יום רביעי','יום חמישי','יום שישי','שבת'];
+const HE_MONTHS = ['בינואר','בפברואר','במרץ','באפריל','במאי','ביוני','ביולי','באוגוסט','בספטמבר','באוקטובר','בנובמבר','בדצמבר'];
+function gematria(n) {
+  const ones = ['','א','ב','ג','ד','ה','ו','ז','ח','ט'], tens = ['','י','כ','ל','מ','נ','ס','ע','פ','צ'];
+  const hundreds = ['','ק','ר','ש','ת','תק','תר','תש','תת','תתק'];
+  n %= 1000;
+  let s = hundreds[Math.floor(n / 100)], r = n % 100;
+  if (r === 15) s += 'טו'; else if (r === 16) s += 'טז'; else s += tens[Math.floor(r / 10)] + ones[r % 10];
+  return s.length === 1 ? s + '׳' : s.slice(0, -1) + '״' + s.slice(-1);
+}
+function hebrewDate(d) {
+  try {
+    const parts = new Intl.DateTimeFormat('he-u-ca-hebrew', { day: 'numeric', month: 'long', year: 'numeric' }).formatToParts(d);
+    const get = t => (parts.find(p => p.type === t) || {}).value;
+    return gematria(+get('day')) + ' ב' + get('month') + ' ' + gematria(+get('year'));
+  } catch (e) { return ''; }
+}
+
+function tick() {
+  const d = new Date();
+  const hh = pad(d.getHours()), mi = pad(d.getMinutes()), se = pad(d.getSeconds());
+  flips.h1(hh[0]); flips.h2(hh[1]); flips.m1(mi[0]); flips.m2(mi[1]); flips.s1(se[0]); flips.s2(se[1]);
+  if (d.getDate() !== lastDay) {
+    lastDay = d.getDate();
+    $('date').innerHTML = '<b>' + DAYS[d.getDay()] + '</b>, ' + d.getDate() + ' ' + MONTHS_GEN[d.getMonth()];
+    const hd = hebrewDate(d);
+    $('dateHe').innerHTML = '<b>' + HE_DAYS[d.getDay()] + '</b>, ' + d.getDate() + ' ' + HE_MONTHS[d.getMonth()] +
+      (hd ? ' <span class="heb">· ' + hd + '</span>' : '');
+    $('week').textContent = d.getFullYear() + ' · неделя ' + isoWeek(d);
+    selDay = null;
+    calMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+    refreshEvents();
+  }
+  const h = d.getHours();
+  const night = NIGHT_FROM > NIGHT_TO ? (h >= NIGHT_FROM || h < NIGHT_TO) : (h >= NIGHT_FROM && h < NIGHT_TO);
+  if (night !== nightState) {
+    nightState = night;
+    document.body.classList.toggle('night', night);
+    try { if (window.Android) Android.setBrightness(night ? 0.02 : -1); } catch (e) {}
+  }
+}
+
+// ---- События календаря ----
+// Возвращает массив событий или null, если нет доступа к календарю.
+function fetchEvents(from, to) {
+  let evs;
+  if (window.Android) {
+    const raw = Android.getEvents(+from, +to);
+    if (raw == null) return null;
+    evs = JSON.parse(raw);
+  } else evs = demoEvents(from, to);   // предпросмотр в браузере
+  return evs.filter(e => calShown(e.cal));
+}
+
+// ---- Выбор календарей (своя настройка, не зависит от галочек Samsung) ----
+let calSel = {};
+try { calSel = JSON.parse(store.get('calSel') || '{}'); } catch (e) { calSel = {}; }
+let calList = [];
+function loadCalendars() {
+  try {
+    if (window.Android) { const raw = Android.getCalendars(); calList = raw ? JSON.parse(raw) : []; }
+    else calList = [
+      { id: 1, name: 'Мой календарь', account: 'me@example.com', color: '#4A90E2', visible: true, sync: true },
+      { id: 2, name: 'Дни рождения', account: 'me@example.com', color: '#6CC08B', visible: true, sync: true },
+      { id: 3, name: 'Общий календарь', account: 'partner@example.com', color: '#E5806B', visible: true, sync: true },
+      { id: 4, name: 'Праздники Израиля', account: 'partner@example.com', color: '#F2B84B', visible: true, sync: true },
+      { id: 5, name: 'Семья', account: 'partner@example.com', color: '#8B949E', visible: false, sync: true },
+    ];
+  } catch (e) { calList = []; }
+}
+function calShown(id) {
+  if (id == null) return true;
+  if (id in calSel) return calSel[id];
+  const c = calList.find(c => c.id === id);
+  return c ? c.visible : true;           // по умолчанию — как в системе
+}
+function renderCalPicker() {
+  loadCalendars();
+  if (!calList.length) { $('calBody').innerHTML = '<div class="e-empty">Календари не найдены. Проверьте доступ к календарю.</div>'; return; }
+  const byAcc = {};
+  calList.forEach(c => (byAcc[c.account] = byAcc[c.account] || []).push(c));
+  let html = '';
+  for (const acc of Object.keys(byAcc)) {
+    html += '<div class="acc">' + esc(acc) + '</div>';
+    for (const c of byAcc[acc]) {
+      const on = calShown(c.id);
+      html += '<div class="cal-row ' + (on ? 'on' : 'off') + '" data-id="' + c.id + '"><span class="dot" style="background:' + esc(c.color) + '"></span>' +
+        '<div class="nm">' + esc(c.name || acc) + (c.sync ? '' : '<small>не синхронизируется на планшете</small>') + '</div>' +
+        '<span class="box">' + (on ? '✓' : '') + '</span></div>';
+    }
+  }
+  $('calBody').innerHTML = html;
+}
+$('calBody').addEventListener('click', e => {
+  const row = e.target.closest('.cal-row'); if (!row) return;
+  const id = +row.dataset.id;
+  calSel[id] = !calShown(id);
+  store.set('calSel', JSON.stringify(calSel));
+  renderCalPicker();
+});
+$('eCals').onclick = () => {
+  renderCalPicker();
+  try { $('verApp').textContent = window.Android ? Android.appVersion() : '—'; } catch (e) {}
+  $('calOverlay').classList.add('open');
+};
+$('dreamBtn').onclick = () => { try { Android.openDreamSettings(); } catch (e) {} };
+$('updBtn').onclick = () => {
+  try { Android.checkUpdate(); } catch (e) {}
+  $('updBtn').textContent = 'Проверяю…';
+  setTimeout(() => { $('updBtn').textContent = 'Проверить'; }, 6000);
+};
+$('verPage').textContent = PAGE_VERSION;
+
+// В режиме заставки: долгое нажатие на часы — выйти
+let lpTimer = null;
+$('clock').addEventListener('touchstart', () => {
+  lpTimer = setTimeout(() => { try { if (Android.isDream()) Android.exit(); } catch (e) {} }, 800);
+}, { passive: true });
+['touchend', 'touchmove', 'touchcancel'].forEach(t => $('clock').addEventListener(t, () => clearTimeout(lpTimer), { passive: true }));
+function closeCalPicker() { $('calOverlay').classList.remove('open'); refreshEvents(); }
+$('calClose').onclick = closeCalPicker;
+$('calOverlay').addEventListener('click', e => { if (e.target.id === 'calOverlay') closeCalPicker(); });
+
+// ---- Ручная синхронизация ----
+function syncNow() {
+  try { if (window.Android) Android.syncNow(); } catch (e) {}
+  $('eSync').classList.add('spin');
+  setTimeout(refreshEvents, 4000);
+  setTimeout(() => { refreshEvents(); $('eSync').classList.remove('spin'); }, 12000);
+}
+$('eSync').onclick = syncNow;
+function demoEvents(from, to) {
+  const t = startOfDay(new Date()), at = (d, h, m) => +addDays(t, d) + (h * 60 + m) * 6e4;
+  return [
+    { cal: 1, title: 'Утренний созвон', begin: at(0, 10, 0), end: at(0, 10, 30), color: '#4A90E2', loc: '' },
+    { cal: 1, title: 'Отчёт клиенту', begin: at(0, 15, 0), end: at(0, 16, 0), color: '#4A90E2', loc: 'Zoom' },
+    { cal: 4, title: 'Праздник', allDay: true, day: dayKey(addDays(t, 3)), dayEnd: dayKey(addDays(t, 3)), color: '#F2B84B', loc: '' },
+    { cal: 3, title: 'Встреча', begin: at(1, 12, 0), end: at(1, 13, 0), color: '#E5806B', loc: 'Эйлат' },
+    { cal: 5, title: 'Семейный ужин', begin: at(2, 19, 0), end: at(2, 20, 0), color: '#8B949E', loc: '' },
+  ].filter(e => e.allDay || (e.end > from && e.begin < to));
+}
+// Дни (yyyy-mm-dd), которые занимает событие
+function eventDays(e) {
+  const out = [];
+  if (e.allDay) {
+    for (let d = new Date(e.day + 'T00:00'); dayKey(d) <= e.dayEnd; d = addDays(d, 1)) out.push(dayKey(d));
+  } else {
+    const last = startOfDay(new Date(e.end - 1));
+    for (let d = startOfDay(new Date(e.begin)); d <= last; d = addDays(d, 1)) out.push(dayKey(d));
+    if (!out.length) out.push(dayKey(new Date(e.begin)));
+  }
+  return out;
+}
+
+let calMonth = new Date(), calMarks = new Set();
+let selDay = null;                  // выбранный в календаре день (yyyy-mm-dd); null — ближайшие дни
+let idleTimer = null;
+const IDLE_RESET_MS = 90 * 1000;    // через 1,5 мин без касаний — вернуться к сегодняшнему виду
+
+function refreshEvents() {
+  loadCalendars();
+  renderEvents();
+  // точки на днях с событиями в видимом месяце
+  const y = calMonth.getFullYear(), m = calMonth.getMonth();
+  calMarks = new Set();
+  try {
+    (fetchEvents(new Date(y, m, -7), new Date(y, m + 1, 8)) || [])
+      .forEach(e => eventDays(e).forEach(k => calMarks.add(k)));
+  } catch (e) {}
+  renderCal();
+}
+window.refreshEvents = refreshEvents;
+
+function resetSelection() {
+  clearTimeout(idleTimer);
+  selDay = null;
+  const n = new Date();
+  calMonth = new Date(n.getFullYear(), n.getMonth(), 1);
+  refreshEvents();
+}
+function poke() {                   // любое касание календаря откладывает возврат
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(resetSelection, IDLE_RESET_MS);
+}
+
+let lastMode = '';
+function renderEvents() {
+  const now = new Date(), today = startOfDay(now);
+  let from, until;
+  if (selDay) {
+    from = new Date(selDay + 'T00:00'); until = addDays(from, 1);
+    $('eSub').innerHTML = '<button class="e-back" id="eBack">‹ ближайшие</button>';
+    $('eBack').onclick = resetSelection;
+  } else {
+    from = today; until = addDays(today, EVENT_DAYS);
+    $('eSub').textContent = 'на ' + EVENT_DAYS + ' дней';
+  }
+  const list = $('eList'), mode = selDay || 'upcoming';
+  const keepScroll = mode === lastMode ? list.scrollTop : 0;
+  lastMode = mode;
+
+  let evs;
+  try { evs = fetchEvents(from, until); } catch (e) { evs = []; }
+  if (evs == null) {
+    list.innerHTML = '<div class="e-empty">Нужен доступ к календарю планшета, чтобы показывать ваши события.</div>' +
+      '<button class="e-btn" id="eAllow">Разрешить доступ</button>';
+    $('eAllow').onclick = () => Android.requestCalendarAccess();
+    return;
+  }
+  // группируем по дням; многодневные события показываем в каждом дне
+  const byDay = {};
+  for (const e of evs) {
+    if (!selDay && !e.allDay && e.end <= +now) continue;     // в ближайших — без прошедших
+    for (const k of eventDays(e)) {
+      const d = new Date(k + 'T00:00');
+      if (d < from || d >= until) continue;
+      (byDay[k] = byDay[k] || []).push(e);
+    }
+  }
+  const keys = Object.keys(byDay).sort();
+  if (!keys.length) {
+    if (selDay) {
+      const d = new Date(selDay + 'T00:00');
+      list.innerHTML = '<div class="e-day">' + dayLabel(d, today) + '</div><div class="e-empty">В этот день событий нет.</div>';
+    } else list.innerHTML = '<div class="e-empty">Ближайшие ' + EVENT_DAYS + ' дней свободны.</div>';
+    return;
+  }
+  let html = '';
+  for (const k of keys) {
+    const d = new Date(k + 'T00:00');
+    html += '<div class="e-day' + (k === dayKey(today) ? ' today' : '') + '">' + dayLabel(d, today) + '</div>';
+    byDay[k].sort((a, b) => (b.allDay - a.allDay) || (a.begin - b.begin))
+      .forEach(e => { html += eventRow(e, k, now); });
+  }
+  list.innerHTML = html;
+  list.scrollTop = keepScroll;
+}
+function dayLabel(d, today) {
+  const diff = Math.round((d - today) / 864e5);
+  const name = diff === 0 ? 'Сегодня' : diff === 1 ? 'Завтра' : diff === -1 ? 'Вчера' : DAYS[d.getDay()];
+  return name + ' · ' + d.getDate() + ' ' + MONTHS_GEN[d.getMonth()] + (d.getFullYear() !== today.getFullYear() ? ' ' + d.getFullYear() : '');
+}
+function eventRow(e, k, now) {
+  let time, cls = 'e-item';
+  if (e.allDay) time = 'весь день';
+  else {
+    const startsHere = dayKey(new Date(e.begin)) === k, endsHere = dayKey(new Date(e.end - 1)) === k;
+    time = (startsHere ? hm(e.begin) : '…') + (endsHere ? '–' + hm(e.end) : '–…');
+    if (e.begin <= +now && e.end > +now) { cls += ' now'; time = 'сейчас · до ' + hm(e.end); }
+    else if (e.end <= +now) cls += ' past';
+  }
+  return '<div class="' + cls + '"><span class="e-bar" style="background:' + esc(e.color || '#8B949E') + '"></span>' +
+    '<span class="e-time">' + time + '</span><div class="e-body"><div class="e-name">' + esc(e.title || '(без названия)') + '</div>' +
+    (e.loc ? '<div class="e-loc">' + esc(e.loc) + '</div>' : '') + '</div></div>';
+}
+
+// ---- Календарь ----
+function renderCal() {
+  const y = calMonth.getFullYear(), m = calMonth.getMonth();
+  $('calTitle').textContent = MONTHS[m] + ' ' + y;
+  const now = new Date();
+  const order = WEEK_STARTS_MONDAY ? [1,2,3,4,5,6,0] : [0,1,2,3,4,5,6];
+  let html = order.map(i => '<div class="h">' + DAYS_SHORT[i] + '</div>').join('');
+  const first = new Date(y, m, 1);
+  const shift = (first.getDay() - order[0] + 7) % 7;
+  for (let i = 0; i < 42; i++) {
+    const c = new Date(y, m, 1 - shift + i), k = dayKey(c);
+    if (i >= 35 && c.getMonth() !== m) break;
+    const cls = ['c'];
+    if (WEEKEND.includes(c.getDay())) cls.push('we');
+    if (c.getMonth() !== m) cls.push('out');
+    if (c.toDateString() === now.toDateString()) cls.push('today');
+    if (calMarks.has(k)) cls.push('ev');
+    if (k === selDay) cls.push('sel');
+    html += '<div class="' + cls.join(' ') + '" data-k="' + k + '">' + c.getDate() + '</div>';
+  }
+  $('cal').innerHTML = html;
+  $('calToday').hidden = !selDay && y === now.getFullYear() && m === now.getMonth();
+}
+function shiftMonth(n) {
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + n, 1);
+  poke(); refreshEvents();
+}
+$('calPrev').onclick = () => shiftMonth(-1);
+$('calNext').onclick = () => shiftMonth(1);
+$('calToday').onclick = resetSelection;
+$('cal').addEventListener('click', ev => {
+  const cell = ev.target.closest('[data-k]'); if (!cell) return;
+  const k = cell.dataset.k;
+  if (k === selDay) { resetSelection(); return; }     // повторное нажатие — снять выбор
+  selDay = k;
+  const d = new Date(k + 'T00:00');
+  calMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+  poke(); refreshEvents();
+});
+// листание месяцев свайпом
+let tx = null;
+$('cal').addEventListener('touchstart', e => { tx = e.touches[0].clientX; }, { passive: true });
+$('cal').addEventListener('touchend', e => {
+  if (tx == null) return;
+  const dx = e.changedTouches[0].clientX - tx; tx = null;
+  if (Math.abs(dx) > 50) shiftMonth(dx < 0 ? 1 : -1);
+});
+
+// ---- Погода (Open-Meteo, без ключа) ----
+const WMO = {
+  0:['☀️','ясно'], 1:['🌤️','почти ясно'], 2:['⛅','переменная облачность'], 3:['☁️','пасмурно'],
+  45:['🌫️','туман'], 48:['🌫️','изморозь'], 51:['🌦️','морось'], 53:['🌦️','морось'], 55:['🌦️','сильная морось'],
+  61:['🌧️','небольшой дождь'], 63:['🌧️','дождь'], 65:['🌧️','ливень'], 80:['🌦️','ливни'], 81:['🌧️','ливни'], 82:['⛈️','сильные ливни'],
+  95:['⛈️','гроза'], 96:['⛈️','гроза с градом'], 99:['⛈️','гроза с градом'], 71:['🌨️','снег'], 73:['🌨️','снег'], 75:['❄️','снегопад']
+};
+const wmo = (c, isDay = 1) => {
+  const w = WMO[c] || ['🌡️', ''];
+  return !isDay && (c === 0 || c === 1) ? ['🌙', w[1]] : w;
+};
+let wxData = null;
+function renderWeather(data) {
+  wxData = data;
+  const cur = data.current, dl = data.daily;
+  const [icon, desc] = wmo(cur.weather_code, cur.is_day);
+  const hhmm = s => s ? s.slice(11, 16) : '';
+  let fc = '';
+  for (let i = 1; i <= 3 && i < dl.time.length; i++) {
+    const dd = new Date(dl.time[i] + 'T12:00');
+    fc += '<div class="fc"><span class="d">' + DAYS_SHORT[dd.getDay()] + '</span><span class="i">' + wmo(dl.weather_code[i])[0] +
+      '</span><span class="t">' + Math.round(dl.temperature_2m_max[i]) + '° <span>' + Math.round(dl.temperature_2m_min[i]) + '°</span></span></div>';
+  }
+  const upd = new Date(data._fetched || Date.now());
+  $('weather').innerHTML =
+    '<div class="w-now"><span class="w-icon">' + icon + '</span><span class="w-temp">' + Math.round(cur.temperature_2m) + '°</span></div>' +
+    '<div class="w-desc">' + desc + ', ощущается ' + Math.round(cur.apparent_temperature) + '°</div>' +
+    '<div class="w-meta">💧 ' + cur.relative_humidity_2m + '% · 💨 ' + Math.round(cur.wind_speed_10m) + ' км/ч · ☀ ' +
+      hhmm(dl.sunrise[0]) + '–' + hhmm(dl.sunset[0]) + ' · обн. ' + pad(upd.getHours()) + ':' + pad(upd.getMinutes()) + '</div>' +
+    '<div class="forecast">' + fc + '</div>';
+  if ($('wxOverlay').classList.contains('open')) renderWx();
+}
+function renderWx() {
+  const data = wxData;
+  if (!data) { $('wxBody').innerHTML = '<div class="w-meta">Погода ещё не загружена.</div>'; return; }
+  const now = new Date(), today = startOfDay(now);
+  let html = '';
+  const h = data.hourly;
+  if (h && h.time) {
+    const nowKey = dayKey(now) + 'T' + pad(now.getHours()) + ':00';
+    let i0 = h.time.findIndex(t => t >= nowKey); if (i0 < 0) i0 = 0;
+    html += '<div class="wx-sub">По часам</div><div class="hours">';
+    for (let i = i0; i < Math.min(i0 + 24, h.time.length); i++) {
+      const p = h.precipitation_probability ? h.precipitation_probability[i] : 0;
+      html += '<div class="hr"><div class="t">' + (i === i0 ? 'сейчас' : h.time[i].slice(11, 16)) + '</div>' +
+        '<div class="i">' + wmo(h.weather_code[i], h.is_day ? h.is_day[i] : 1)[0] + '</div>' +
+        '<div class="v">' + Math.round(h.temperature_2m[i]) + '°</div>' +
+        '<div class="p">' + (p >= 10 ? '💧' + p + '%' : '') + '</div></div>';
+    }
+    html += '</div>';
+  }
+  const dl = data.daily;
+  html += '<div class="wx-sub">На неделю</div><div class="days7">';
+  for (let i = 0; i < dl.time.length; i++) {
+    const d = new Date(dl.time[i] + 'T12:00'), diff = Math.round((startOfDay(d) - today) / 864e5);
+    const name = diff === 0 ? 'Сегодня' : diff === 1 ? 'Завтра' : DAYS_SHORT[d.getDay()] + ', ' + d.getDate() + ' ' + MONTHS_GEN[d.getMonth()];
+    const [ic, ds] = wmo(dl.weather_code[i]);
+    const pr = dl.precipitation_probability_max ? dl.precipitation_probability_max[i] : null;
+    const wind = dl.wind_speed_10m_max ? Math.round(dl.wind_speed_10m_max[i]) + ' км/ч' : '';
+    html += '<div class="d7"><span>' + name + '</span><span class="i">' + ic + '</span><span class="m">' + ds + '</span>' +
+      '<span class="rng">' + Math.round(dl.temperature_2m_max[i]) + '° <span>' + Math.round(dl.temperature_2m_min[i]) + '°</span></span>' +
+      '<span class="m">💨 ' + wind + '</span><span class="m">' + (pr != null ? '💧 ' + pr + '%' : '') + '</span></div>';
+  }
+  html += '</div>';
+  $('wxBody').innerHTML = html;
+}
+let wxTimer = null;
+function openWx() {
+  renderWx();
+  $('wxOverlay').classList.add('open');
+  clearTimeout(wxTimer); wxTimer = setTimeout(closeWx, 60 * 1000);   // само закроется через минуту
+}
+function closeWx() { clearTimeout(wxTimer); $('wxOverlay').classList.remove('open'); }
+$('wPanel').onclick = openWx;
+$('wxClose').onclick = closeWx;
+$('wxOverlay').addEventListener('click', e => { if (e.target.id === 'wxOverlay') closeWx(); });
+
+async function loadWeather() {
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + LAT + '&longitude=' + LON +
+    '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,is_day' +
+    '&hourly=temperature_2m,weather_code,precipitation_probability,is_day' +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max' +
+    '&forecast_days=7&timezone=' + encodeURIComponent(TZ);
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    data._fetched = Date.now();
+    store.set('weather', JSON.stringify(data));
+    renderWeather(data);
+  } catch (e) {
+    const cached = store.get('weather');
+    if (cached) renderWeather(JSON.parse(cached));
+    else $('weather').innerHTML = '<div class="w-meta">Нет связи — погода появится, когда будет интернет</div>';
+  }
+}
+
+tick();
+setInterval(tick, 1000);
+setInterval(refreshEvents, 2 * 60 * 1000);
+setInterval(() => { try { if (window.Android) Android.syncNow(); } catch (e) {} }, 15 * 60 * 1000);
+loadWeather();
+setInterval(loadWeather, 20 * 60 * 1000);
+</script>
+</body>
+</html>
