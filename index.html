@@ -19,6 +19,7 @@
   html, body { height: 100%; background: var(--bg); color: var(--text);
     font-family: Roboto, "Segoe UI", system-ui, sans-serif; overflow: hidden;
     -webkit-tap-highlight-color: transparent; user-select: none; }
+  body { background: transparent; }       /* иначе фон body перекрывает слой неба */
   body { transition: opacity 1.5s; }
   body.night { opacity: .55; }
 
@@ -26,7 +27,23 @@
     padding-left: max(3vmin, env(safe-area-inset-left)); padding-right: max(3vmin, env(safe-area-inset-right)); }
   .left { display: flex; flex-direction: column; gap: 2.2vmin; min-height: 0; min-width: 0; }
   .right { display: flex; flex-direction: column; gap: 2.2vmin; min-height: 0; min-width: 0; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 2.4vmin; padding: 2.4vmin; }
+  .panel { background: rgba(22, 27, 34, .74); border: 1px solid rgba(255, 255, 255, .07); border-radius: 2.4vmin; padding: 2.4vmin;
+    -webkit-backdrop-filter: blur(1.4vmin); backdrop-filter: blur(1.4vmin); }
+
+  /* Живое небо: градиент по солнцу + слой с погодой (звёзды, облака, дождь, пыль) */
+  .sky { position: fixed; inset: 0; z-index: -2;
+    background: linear-gradient(180deg, var(--sky1, #05070D) 0%, var(--sky2, #0A1020) 58%, var(--sky3, #111A2E) 100%); }
+  #fx { position: fixed; inset: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none; }
+  .left .date, .left .date-he, .left .week { text-shadow: 0 .2vmin 1.2vmin rgba(0, 0, 0, .55); }
+
+  /* Демо-панель (только в предпросмотре ?demo) */
+  .demo { position: fixed; left: 50%; bottom: 1.5vmin; transform: translateX(-50%); z-index: 20; display: flex; flex-wrap: wrap;
+    gap: .8vmin; align-items: center; max-width: 96vw; padding: 1.2vmin 1.6vmin; border-radius: 1.6vmin;
+    background: rgba(0, 0, 0, .78); border: 1px solid #333; font-size: 1.9vmin; color: #ddd; }
+  .demo button { background: #222; color: #ddd; border: 1px solid #444; border-radius: .8vmin; padding: .6vmin 1.2vmin; font-size: 1.9vmin; }
+  .demo button.on { background: var(--accent); color: #111; border-color: var(--accent); }
+  .demo input[type=range] { width: 26vmin; }
+  .demo b { color: var(--accent); min-width: 7vmin; display: inline-block; }
 
   /* Часы */
   /* Перекидные часы (split-flap) */
@@ -194,6 +211,8 @@
 </style>
 </head>
 <body>
+<div class="sky" id="sky"></div>
+<canvas id="fx"></canvas>
 <div class="app">
   <section class="left">
     <div class="clockbox">
@@ -256,6 +275,13 @@
     </div>
     <div class="wx-sub">Какие календари показывать</div>
     <div id="calBody"></div>
+    <div class="wx-sub">Звук</div>
+    <div class="cal-row" id="sndClick"><span class="nm">Щелчок при смене минуты</span><span class="box"></span></div>
+    <div class="cal-row" id="sndChime"><span class="nm">Бой в начале часа<small>Ночью с 23:00 до 6:00 часы молчат</small></span><span class="box"></span></div>
+    <div class="set-row">
+      <div class="nm">Проверить, как звучит</div>
+      <button class="e-btn" id="sndTest">Послушать</button>
+    </div>
     <div class="wx-sub">Автозапуск</div>
     <div class="set-row">
       <div class="nm">Часы на зарядке<small>Включаются сами, когда планшет заряжается и им не пользуются. В настройках выберите «Заставка» → «Экран-часы».</small></div>
@@ -280,7 +306,7 @@
 
 <script>
 // ---- Настройки ----
-const PAGE_VERSION = '2.2';           // версия экрана (меняется при каждом обновлении страницы)
+const PAGE_VERSION = '2.3';           // версия экрана (меняется при каждом обновлении страницы)
 const LAT = 29.5577, LON = 34.9519;   // Эйлат
 const TZ = 'Asia/Jerusalem';
 const NIGHT_FROM = 23, NIGHT_TO = 6;  // ночью экран приглушается
@@ -363,6 +389,7 @@ function hebrewDate(d) {
 function tick() {
   const d = new Date();
   const hh = pad(d.getHours()), mi = pad(d.getMinutes()), se = pad(d.getSeconds());
+  onMinute(d);
   flips.h1(hh[0]); flips.h2(hh[1]); flips.m1(mi[0]); flips.m2(mi[1]); flips.s1(se[0]); flips.s2(se[1]);
   if (d.getDate() !== lastDay) {
     lastDay = d.getDate();
@@ -677,6 +704,7 @@ function renderWeather(data) {
       hhmm(dl.sunrise[0]) + '–' + hhmm(dl.sunset[0]) + ' · обн. ' + pad(upd.getHours()) + ':' + pad(upd.getMinutes()) + '</div>' +
     '<div class="forecast">' + fc + '</div>';
   if ($('wxOverlay').classList.contains('open')) renderWx();
+  updateSky(); fxSetup();
 }
 function renderWx() {
   const data = wxData;
@@ -725,7 +753,7 @@ $('wxOverlay').addEventListener('click', e => { if (e.target.id === 'wxOverlay')
 
 async function loadWeather() {
   const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + LAT + '&longitude=' + LON +
-    '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,is_day' +
+    '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,is_day,cloud_cover' +
     '&hourly=temperature_2m,weather_code,precipitation_probability,is_day' +
     '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,wind_speed_10m_max' +
     '&forecast_days=7&timezone=' + encodeURIComponent(TZ);
@@ -741,6 +769,330 @@ async function loadWeather() {
     if (cached) renderWeather(JSON.parse(cached));
     else $('weather').innerHTML = '<div class="w-meta">Нет связи — погода появится, когда будет интернет</div>';
   }
+}
+
+// ================= Живое небо =================
+// Ключевые кадры неба относительно восхода/заката (в минутах): цвета верх/середина/низ и яркость звёзд
+// Экран всегда тёмный: меняется оттенок, а время суток выдаёт свечение у нижнего края
+const SKY_KEYS = [
+  ['rise', -90, '#04060B', '#070A13', '#0A0F1C', 1],
+  ['rise', -40, '#05070F', '#090B19', '#151326', .7],
+  ['rise', -10, '#070914', '#100E22', '#2A1A2E', .15],
+  ['rise',  20, '#080D18', '#0E1526', '#2E2024', 0],
+  ['rise', 100, '#08101C', '#0C1828', '#122436', 0],
+  ['set', -150, '#08101C', '#0C1828', '#122436', 0],
+  ['set',  -45, '#09101C', '#11172A', '#2E2018', 0],
+  ['set',    0, '#0A0B16', '#160F1E', '#3A1A16', 0],
+  ['set',   30, '#06070F', '#0D0B18', '#1E1220', .4],
+  ['set',   85, '#04060B', '#070A13', '#0A0F1C', 1],
+];
+const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16));
+const mix = (a, b, t) => { const A = hex2rgb(a), B = hex2rgb(b); return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')'; };
+const toMin = s => { const m = /T(\d\d):(\d\d)/.exec(s || ''); return m ? +m[1] * 60 + +m[2] : null; };
+
+let demo = null;                      // настройки демо-режима (только предпросмотр)
+function skyMinute() {
+  if (demo && demo.minute != null) return demo.minute;
+  const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+}
+function sunTimes() {
+  const dl = wxData && wxData.daily;
+  return { rise: (dl && toMin(dl.sunrise[0])) || 360, set: (dl && toMin(dl.sunset[0])) || 1020 };
+}
+const sky = { stars: 1, sunX: .5, sunY: 1.2, glow: 0 };
+function updateSky() {
+  const m = skyMinute(), st = sunTimes();
+  const keys = SKY_KEYS.map(k => ({ at: st[k[0]] + k[1], c: [k[2], k[3], k[4]], s: k[5] }));
+  let a = keys[keys.length - 1], b = keys[0], t = 0;
+  if (m >= keys[0].at && m < keys[keys.length - 1].at) {
+    for (let i = 0; i < keys.length - 1; i++) if (m >= keys[i].at && m < keys[i + 1].at) { a = keys[i]; b = keys[i + 1]; t = (m - a.at) / (b.at - a.at); break; }
+  } else { a = b = keys[0]; }                                 // ночь
+  const el = $('sky').style;
+  el.setProperty('--sky1', mix(a.c[0], b.c[0], t));
+  el.setProperty('--sky2', mix(a.c[1], b.c[1], t));
+  el.setProperty('--sky3', mix(a.c[2], b.c[2], t));
+  sky.stars = a.s + (b.s - a.s) * t;
+  // солнце: дуга от восхода (слева) к закату (справа); свечение сильнее у горизонта
+  const p = (m - st.rise) / (st.set - st.rise);
+  sky.sunX = .08 + .84 * p;
+  sky.sunY = 1.05 - Math.sin(Math.max(0, Math.min(1, p)) * Math.PI) * .75;
+  sky.glow = p > -.12 && p < 1.12 ? Math.max(0, 1 - Math.abs(Math.sin(Math.max(0, Math.min(1, p)) * Math.PI)) * .75) : 0;
+}
+
+// ================= Погода на фоне: звёзды, облака, дождь, хамсин =================
+const fx = { cv: $('fx'), w: 0, h: 0, dpr: 1, stars: [], clouds: [], drops: [], dust: [], mode: 'clear', cover: 0, rain: 0, khamsin: 0, last: 0 };
+let dustLevel = 0;                    // пыль в воздухе, мкг/м³ (Open-Meteo Air Quality)
+function fxResize() {
+  fx.dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+  fx.w = fx.cv.width = Math.round(innerWidth * fx.dpr);
+  fx.h = fx.cv.height = Math.round(innerHeight * fx.dpr);
+  fx.stars = Array.from({ length: 140 }, () => ({ x: Math.random(), y: Math.random() * (HORIZON - .1), r: Math.random() * 1.2 + .3, ph: Math.random() * 6.28, sp: .5 + Math.random() * 1.5 }));
+  buildDay();
+}
+
+// ================= Залив Эйлата: горы, море с бликами, солнце =================
+const HORIZON = .6;                                      // линия горизонта (доля высоты экрана)
+const day = { mountains: null, glints: [] };
+function buildDay() {
+  const W = fx.w, H = fx.h, S = Math.min(W, H);
+  // горы на том берегу залива и блики на воде
+  const hy = HORIZON * H, pts = [];
+  let y = hy - S * .05;
+  for (let x = 0; x <= W + 20; x += W / 60) {
+    y += (Math.random() - .5) * S * .025;
+    y = Math.max(hy - S * .13, Math.min(hy - S * .015, y));
+    pts.push([x, y]);
+  }
+  day.mountains = pts;
+  day.glints = Array.from({ length: 260 }, () => {
+    const d = Math.pow(Math.random(), 1.8);             // ближе к горизонту — гуще и мельче
+    return { x: Math.random(), y: HORIZON + .005 + d * (1 - HORIZON), r: (.4 + d * 1.6) * fx.dpr, ph: Math.random() * 6.28, sp: 2 + Math.random() * 4, v: .002 + Math.random() * .004 };
+  });
+}
+function drawBay(g, ts, dt, W, H, S, d) {          // d — «дневность»: 0 ночью, 1 днём
+  {
+    const hy = HORIZON * H;
+    // море
+    const sea = g.createLinearGradient(0, hy, 0, H);
+    sea.addColorStop(0, 'rgba(10,22,32,.95)'); sea.addColorStop(1, 'rgba(4,8,12,.98)');
+    g.fillStyle = sea; g.fillRect(0, hy, W, H - hy);
+    // солнце — мягкое свечение по дуге, под ним дорожка бликов
+    const sx = sky.sunX * W, sunUp = d > .05 && sky.sunX > 0 && sky.sunX < 1;
+    if (sunUp) {
+      const sy = hy - Math.sin(Math.max(0, Math.min(1, (sky.sunX - .08) / .84)) * Math.PI) * hy * .8, sr = S * .035;
+      const halo = g.createRadialGradient(sx, sy, 0, sx, sy, sr * 7);
+      halo.addColorStop(0, 'rgba(255,225,175,' + (.30 * d) + ')'); halo.addColorStop(.12, 'rgba(255,200,140,' + (.14 * d) + ')');
+      halo.addColorStop(.4, 'rgba(255,170,110,' + (.04 * d) + ')'); halo.addColorStop(1, 'rgba(255,170,110,0)');
+      g.fillStyle = halo; g.beginPath(); g.arc(sx, sy, sr * 7, 0, 6.283); g.fill();
+    }
+    // блики: мерцают и медленно дрейфуют; под солнцем ярче и гуще
+    for (const p of day.glints) {
+      p.x += p.v * dt; if (p.x > 1) p.x -= 1;
+      const near = sunUp ? Math.max(0, 1 - Math.abs(p.x * W - sx) / (S * (.06 + (p.y - HORIZON) * .5))) : 0;
+      const tw = Math.max(0, Math.sin(ts / 1000 * p.sp + p.ph));
+      const a = tw * tw * (.10 + .22 * d + near * .5 * d);
+      if (a < .02) continue;
+      g.fillStyle = near > .3 ? 'rgba(255,225,175,' + a + ')' : 'rgba(200,220,240,' + a + ')';
+      g.fillRect(p.x * W - p.r * 1.6, p.y * H, p.r * 3.2, Math.max(1, p.r * .6));
+    }
+    // горы — силуэт на фоне неба
+    g.fillStyle = '#03050A'; g.beginPath(); g.moveTo(0, hy);
+    for (const [x, y] of day.mountains) g.lineTo(x, y);
+    g.lineTo(W, hy); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(120,150,180,.06)'; g.fillRect(0, hy - 1, W, 1.5 * fx.dpr);
+  }
+
+}
+function weatherState() {
+  if (demo && demo.weather) return demo.weather;
+  const c = wxData && wxData.current;
+  if (!c) return { cover: 0, rain: 0, khamsin: 0 };
+  const code = c.weather_code;
+  const rain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82) ? (code % 10 >= 5 ? .8 : .45) : code >= 95 ? 1 : 0;
+  const cover = c.cloud_cover != null ? c.cloud_cover / 100 : ({ 0: 0, 1: .2, 2: .5, 3: .9, 45: .8, 48: .8 }[code] || (rain ? .8 : 0));
+  const khamsin = dustLevel >= 80 || (c.temperature_2m >= 36 && c.relative_humidity_2m <= 20) ? Math.min(1, Math.max(.5, dustLevel / 300)) : 0;
+  return { cover, rain, khamsin };
+}
+function fxSetup() {
+  const s = weatherState();
+  fx.cover = s.cover; fx.rain = s.rain; fx.khamsin = s.khamsin;
+  const nClouds = Math.round(s.cover * 9);
+  while (fx.clouds.length < nClouds) fx.clouds.push(newCloud(true));
+  fx.clouds.length = nClouds;
+  const nDrops = Math.round(s.rain * 140);
+  while (fx.drops.length < nDrops) fx.drops.push({ x: Math.random(), y: Math.random(), v: .6 + Math.random() * .5, l: .02 + Math.random() * .025 });
+  fx.drops.length = nDrops;
+  const nDust = Math.round(s.khamsin * 90);
+  while (fx.dust.length < nDust) fx.dust.push({ x: Math.random(), y: Math.random(), v: .02 + Math.random() * .05, r: Math.random() * 1.6 + .4, a: Math.random() * .5 + .2 });
+  fx.dust.length = nDust;
+}
+function newCloud(anywhere) {
+  return { x: anywhere ? Math.random() * 1.3 - .15 : -.35, y: .04 + Math.random() * .45, s: .12 + Math.random() * .16,
+    v: .0025 + Math.random() * .004, a: .025 + Math.random() * .03,
+    puffs: Array.from({ length: 5 }, (_, i) => ({ dx: (i - 2) * .35 + (Math.random() - .5) * .2, dy: (Math.random() - .5) * .25, r: .45 + Math.random() * .35 })) };
+}
+function fxFrame(ts) {
+  requestAnimationFrame(fxFrame);
+  if (document.hidden || ts - fx.last < 33) return;            // ~30 кадров/с
+  const dt = Math.min(.1, (ts - (fx.last || ts)) / 1000); fx.last = ts;
+  const g = fx.cv.getContext('2d'), W = fx.w, H = fx.h, S = Math.min(W, H);
+  g.clearRect(0, 0, W, H);
+  // солнце у горизонта — мягкое тёплое свечение
+  if (sky.glow > .02) {
+    // свечение прижато к нижнему краю: солнце «за горизонтом», экран остаётся тёмным
+    const gx = sky.sunX * W, gy = H * 1.08, R = S * .75;
+    const gr = g.createRadialGradient(gx, gy, 0, gx, gy, R);
+    gr.addColorStop(0, 'rgba(255,150,80,' + (.20 * sky.glow) + ')');
+    gr.addColorStop(.45, 'rgba(200,90,60,' + (.06 * sky.glow) + ')');
+    gr.addColorStop(1, 'rgba(200,90,60,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  }
+  drawBay(g, ts, dt, W, H, S, 1 - sky.stars);
+  // звёзды (меньше, если облачно; только над горами)
+  const sa = sky.stars * (1 - fx.cover * .85);
+  if (sa > .02) {
+    for (const s of fx.stars) {
+      if (s.y > HORIZON - .1) continue;
+      const tw = .55 + .45 * Math.sin(ts / 1000 * s.sp + s.ph);
+      g.fillStyle = 'rgba(255,255,240,' + (sa * tw * .85) + ')';
+      g.beginPath(); g.arc(s.x * W, s.y * H, s.r * fx.dpr, 0, 6.283); g.fill();
+    }
+  }
+  // облака: мягкие пятна, медленно плывут вправо; ночью темнее
+  const night = sky.stars;
+  for (const c of fx.clouds) {
+    c.x += c.v * dt;
+    if (c.x - c.s * 2 > 1.1) Object.assign(c, newCloud(false));
+    const base = c.a * (1 - night * .45) * (.7 + fx.cover * .6);
+    for (const p of c.puffs) {
+      const px = (c.x + p.dx * c.s) * W, py = (c.y + p.dy * c.s) * H, r = p.r * c.s * W;
+      const gr = g.createRadialGradient(px, py, 0, px, py, r);
+      const col = night > .5 ? '110,125,150' : '170,185,205';
+      gr.addColorStop(0, 'rgba(' + col + ',' + base + ')');
+      gr.addColorStop(1, 'rgba(' + col + ',0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(px, py, r, 0, 6.283); g.fill();
+    }
+  }
+  // пасмурно — общая дымка
+  if (fx.cover > .6) { g.fillStyle = 'rgba(90,100,120,' + ((fx.cover - .6) * .08) + ')'; g.fillRect(0, 0, W, H); }
+  // дождь: редкие косые штрихи
+  if (fx.drops.length) {
+    g.strokeStyle = 'rgba(150,180,215,.17)'; g.lineWidth = 1.2 * fx.dpr; g.beginPath();
+    for (const d of fx.drops) {
+      d.y += d.v * dt * 1.6; d.x += d.v * dt * .25;
+      if (d.y > 1.05) { d.y = -.05; d.x = Math.random(); }
+      g.moveTo(d.x * W, d.y * H); g.lineTo((d.x + d.l * .25) * W, (d.y + d.l) * H);
+    }
+    g.stroke();
+  }
+  // хамсин: песочная дымка и летящая пыль
+  if (fx.khamsin > 0) {
+    const hz = g.createLinearGradient(0, 0, 0, H);
+    hz.addColorStop(0, 'rgba(160,110,50,' + (.03 * fx.khamsin) + ')');
+    hz.addColorStop(1, 'rgba(170,115,55,' + (.12 * fx.khamsin) + ')');
+    g.fillStyle = hz; g.fillRect(0, 0, W, H);
+    for (const p of fx.dust) {
+      p.x += p.v * dt * 3; p.y += Math.sin(ts / 900 + p.x * 9) * .0006;
+      if (p.x > 1.02) { p.x = -.02; p.y = Math.random(); }
+      g.fillStyle = 'rgba(200,155,95,' + (p.a * .6 * fx.khamsin) + ')';
+      g.beginPath(); g.arc(p.x * W, p.y * H, p.r * fx.dpr, 0, 6.283); g.fill();
+    }
+  }
+}
+async function loadDust() {
+  try {
+    const r = await fetch('https://air-quality-api.open-meteo.com/v1/air-quality?latitude=' + LAT + '&longitude=' + LON + '&current=dust&timezone=' + encodeURIComponent(TZ));
+    const j = await r.json();
+    dustLevel = (j.current && j.current.dust) || 0;
+    fxSetup();
+  } catch (e) {}
+}
+window.addEventListener('resize', fxResize);
+
+// ================= Звук: щелчок минут и бой часов =================
+let sound = { click: true, chime: true };
+try { Object.assign(sound, JSON.parse(store.get('sound') || '{}')); } catch (e) {}
+let actx = null, noiseBuf = null;
+function audio() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+document.addEventListener('pointerdown', () => audio(), { passive: true });   // браузер разрешает звук после первого касания
+function flipSound(vol = 1) {
+  const a = audio(); if (!a) return;
+  if (!noiseBuf) {
+    noiseBuf = a.createBuffer(1, a.sampleRate * .06, a.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+  }
+  const t0 = a.currentTime + .01;
+  // два удара: верхний лепесток падает и шлёпает о нижний
+  [[0, 1], [.055, .55]].forEach(([dt, k]) => {
+    const src = a.createBufferSource(); src.buffer = noiseBuf;
+    const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2200; bp.Q.value = .9;
+    const gn = a.createGain();
+    gn.gain.setValueAtTime(0, t0 + dt);
+    gn.gain.linearRampToValueAtTime(.32 * k * vol, t0 + dt + .002);
+    gn.gain.exponentialRampToValueAtTime(.001, t0 + dt + .045);
+    src.connect(bp).connect(gn).connect(a.destination);
+    src.start(t0 + dt); src.stop(t0 + dt + .06);
+    const o = a.createOscillator(), og = a.createGain();
+    o.frequency.value = 150;
+    og.gain.setValueAtTime(.12 * k * vol, t0 + dt);
+    og.gain.exponentialRampToValueAtTime(.001, t0 + dt + .05);
+    o.connect(og).connect(a.destination); o.start(t0 + dt); o.stop(t0 + dt + .06);
+  });
+}
+function chime(strikes) {
+  const a = audio(); if (!a) return;
+  const t0 = a.currentTime + .05, f = 392;                    // соль первой октавы, мягко
+  const master = a.createGain(); master.gain.value = .14;
+  const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2800;
+  master.connect(lp).connect(a.destination);
+  for (let n = 0; n < strikes; n++) {
+    const ts = t0 + n * 1.7;
+    [[1, 1], [2, .45], [3.01, .22], [4.2, .1], [5.43, .05]].forEach(([mul, amp]) => {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = 'sine'; o.frequency.value = f * mul;
+      g.gain.setValueAtTime(0, ts);
+      g.gain.linearRampToValueAtTime(amp, ts + .008);
+      g.gain.exponentialRampToValueAtTime(.0005, ts + 3.2 / mul + .4);
+      o.connect(g).connect(master); o.start(ts); o.stop(ts + 4);
+    });
+  }
+}
+function renderSoundSettings() {
+  [['sndClick', 'click'], ['sndChime', 'chime']].forEach(([id, k]) => {
+    $(id).className = 'cal-row ' + (sound[k] ? 'on' : 'off');
+    $(id).querySelector('.box').textContent = sound[k] ? '✓' : '';
+  });
+}
+[['sndClick', 'click'], ['sndChime', 'chime']].forEach(([id, k]) => {
+  $(id).onclick = () => { sound[k] = !sound[k]; store.set('sound', JSON.stringify(sound)); renderSoundSettings(); audio(); };
+});
+$('sndTest').onclick = () => { audio(); flipSound(); setTimeout(() => chime(3), 700); };
+renderSoundSettings();
+// вызывается из tick() при смене минуты
+let lastMinute = null;
+function onMinute(d) {
+  const m = d.getHours() * 60 + d.getMinutes();
+  if (lastMinute === null) { lastMinute = m; return; }       // первый тик — без звука
+  if (m === lastMinute) return;
+  lastMinute = m;
+  updateSky();
+  if (nightState) return;                                      // ночью тихо
+  if (sound.click) flipSound();
+  if (sound.chime && d.getMinutes() === 0) setTimeout(() => chime(d.getHours() % 12 || 12), 600);
+}
+
+// ================= Демо-панель (только в предпросмотре: ?demo) =================
+if (!window.Android && (location.protocol === 'data:' || location.protocol === 'file:' || /[?&]demo/.test(location.search))) {
+  demo = { minute: null, weather: null, play: null };
+  const p = document.createElement('div');
+  p.className = 'demo';
+  p.innerHTML = 'Время неба: <input type="range" id="dmT" min="0" max="1439" step="1"> <b id="dmL">сейчас</b>' +
+    '<button id="dmPlay">▶ сутки за минуту</button><button id="dmNow">сейчас</button> │ ' +
+    ['ясно', 'облака', 'пасмурно', 'дождь', 'гроза', 'хамсин', 'как есть'].map(w => '<button data-w="' + w + '">' + w + '</button>').join('') +
+    ' │ <button id="dmClick">🔊 щелчок</button><button id="dmChime">🔔 бой ×3</button>';
+  document.body.appendChild(p);
+  const W = { 'ясно': { cover: 0, rain: 0, khamsin: 0 }, 'облака': { cover: .45, rain: 0, khamsin: 0 }, 'пасмурно': { cover: .95, rain: 0, khamsin: 0 },
+    'дождь': { cover: .9, rain: .5, khamsin: 0 }, 'гроза': { cover: 1, rain: 1, khamsin: 0 }, 'хамсин': { cover: .1, rain: 0, khamsin: .9 }, 'как есть': null };
+  const setLabel = () => { const m = Math.round(skyMinute()); $('dmL').textContent = demo.minute == null ? 'сейчас' : pad(Math.floor(m / 60) % 24) + ':' + pad(m % 60); };
+  $('dmT').value = Math.round(skyMinute());
+  $('dmT').oninput = e => { demo.minute = +e.target.value; updateSky(); setLabel(); };
+  $('dmNow').onclick = () => { demo.minute = null; clearInterval(demo.play); demo.play = null; $('dmPlay').classList.remove('on'); updateSky(); setLabel(); };
+  $('dmPlay').onclick = () => {
+    if (demo.play) { clearInterval(demo.play); demo.play = null; $('dmPlay').classList.remove('on'); return; }
+    $('dmPlay').classList.add('on');
+    if (demo.minute == null) demo.minute = Math.round(skyMinute());
+    demo.play = setInterval(() => { demo.minute = (demo.minute + 4) % 1440; $('dmT').value = demo.minute; updateSky(); setLabel(); }, 1000 / 6);
+  };
+  p.querySelectorAll('[data-w]').forEach(b => b.onclick = () => {
+    demo.weather = W[b.dataset.w]; p.querySelectorAll('[data-w]').forEach(x => x.classList.toggle('on', x === b)); fxSetup();
+  });
+  $('dmClick').onclick = () => flipSound();
+  $('dmChime').onclick = () => chime(3);
 }
 
 // ---- Заряд батареи ----
@@ -771,6 +1123,9 @@ async function initBattery() {
   } catch (e) {}
 }
 initBattery();
+
+fxResize(); updateSky(); fxSetup(); requestAnimationFrame(fxFrame);
+loadDust(); setInterval(loadDust, 60 * 60 * 1000);
 
 tick();
 setInterval(tick, 1000);
