@@ -191,6 +191,8 @@
   .set-row .nm { flex: 1; min-width: 0; }
   .set-row .nm small { display: block; font-size: 1.9vmin; color: var(--muted); margin-top: .4vmin; line-height: 1.35; }
   .set-row .e-btn { margin-top: 0; flex: none; }
+  .journal { max-height: 40vmin; overflow: auto; margin: 0 0 1vmin; padding: 1.4vmin; border-radius: 1.2vmin; background: var(--bg);
+    font: 1.9vmin/1.5 ui-monospace, Consolas, monospace; color: var(--muted); white-space: pre-wrap; user-select: text; }
   .e-back { background: none; border: 1px solid var(--line); color: var(--accent); border-radius: 1.2vmin;
     padding: .6vmin 1.6vmin; font-size: 2vmin; }
   .e-day { font-size: 2vmin; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 1.6vmin 0 .4vmin; }
@@ -320,6 +322,12 @@
       <div class="nm">Проверить, как звучит</div>
       <button class="e-btn" id="sndTest">Послушать</button>
     </div>
+    <div class="wx-sub">Журнал</div>
+    <div class="set-row">
+      <div class="nm">Что происходило с экраном<small>Когда гас экран, отключалась зарядка, закрывалась заставка, были сбои. Пригодится, если часы ночью погасли.</small></div>
+      <button class="e-btn" id="jrnBtn">Показать</button>
+    </div>
+    <pre class="journal" id="jrn" hidden></pre>
     <div class="wx-sub">Автозапуск</div>
     <div class="set-row">
       <div class="nm">Часы на зарядке<small>Включаются сами, когда планшет заряжается и им не пользуются. В настройках выберите «Заставка» → «Экран-часы».</small></div>
@@ -344,7 +352,7 @@
 
 <script>
 // ---- Настройки ----
-const PAGE_VERSION = '2.9';           // версия экрана (меняется при каждом обновлении страницы)
+const PAGE_VERSION = '3.0';           // версия экрана (меняется при каждом обновлении страницы)
 const LAT = 29.5577, LON = 34.9519;   // Эйлат
 const TZ = 'Asia/Jerusalem';
 const NIGHT_FROM = 23, NIGHT_TO = 6;  // ночью звуки молчат
@@ -379,6 +387,10 @@ function isoWeek(d) {
   const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
   return Math.ceil(((t - y0) / 864e5 + 1) / 7);
 }
+// Запись в журнал приложения (APK 3.0+); ошибки страницы тоже туда
+const jlog = msg => { try { if (window.Android && Android.log) Android.log(String(msg)); } catch (e) {} };
+window.addEventListener('error', e => jlog('ошибка: ' + e.message + ' (стр. ' + e.lineno + ')'));
+
 // Перекидная карточка: верх — новая цифра, низ — старая, пока «лепесток» не упадёт
 function makeFlip(parent, small) {
   const el = document.createElement('div');
@@ -428,10 +440,12 @@ function hebrewDate(d) {
 
 function tick() {
   const d = new Date();
+  window.__lastTick = Date.now();               // для сторожа в приложении: часы живы
   const hh = pad(d.getHours()), mi = pad(d.getMinutes()), se = pad(d.getSeconds());
-  onMinute(d);
+  try { onMinute(d); } catch (e) { jlog('ошибка onMinute: ' + e); }
   flips.h1(hh[0]); flips.h2(hh[1]); flips.m1(mi[0]); flips.m2(mi[1]); flips.s1(se[0]); flips.s2(se[1]);
   if (d.getDate() !== lastDay) {
+    if (lastDay !== -1) jlog('новый день ' + d.getDate() + '.' + (d.getMonth() + 1) + ', часы работают');
     lastDay = d.getDate();
     $('date').innerHTML = '<b>' + DAYS[d.getDay()] + '</b>, ' + d.getDate() + ' ' + MONTHS_GEN[d.getMonth()];
     const hd = hebrewDate(d);
@@ -515,6 +529,14 @@ $('eCals').onclick = () => {
   $('calOverlay').classList.add('open');
 };
 $('dreamBtn').onclick = () => { try { Android.openDreamSettings(); } catch (e) {} };
+$('jrnBtn').onclick = () => {
+  const j = $('jrn');
+  let text = '';
+  try { text = window.Android && Android.journal ? Android.journal() : ''; } catch (e) {}
+  j.textContent = text || 'Журнал пуст — он появится после установки приложения версии 3.0.';
+  j.hidden = !j.hidden;
+  $('jrnBtn').textContent = j.hidden ? 'Показать' : 'Скрыть';
+};
 $('updBtn').onclick = () => {
   try { Android.checkUpdate(); } catch (e) {}
   $('updBtn').textContent = 'Проверяю…';
